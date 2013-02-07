@@ -8,6 +8,9 @@ $(function(){
   var range_menu = $("#range_menu");
   if (range_menu[0])
     range_menu.buttonset();
+  var custom_range_menu = $("#custom_range_menu");
+  if (custom_range_menu[0])
+    custom_range_menu.buttonset();
   var sort_menu = $("#sort_menu");
   if (sort_menu[0])
     sort_menu.buttonset();
@@ -18,6 +21,11 @@ $(function(){
 
   var search_field_q = $("#search-field-q");
   if (search_field_q[0]) {
+    search_field_q.keypress(function(e) {
+      if (13 == (e.keyCode ? e.keyCode : e.which)) {
+        return false;
+      }
+    });
     search_field_q.keyup(function() {
       $.cookie("ganglia-search-field-q" + window.name, $(this).val());
     });
@@ -59,9 +67,6 @@ $(function(){
         $.get('views_view.php?views_menu=1',
               function(data) {
 	        $("#views_menu").html(data);
-                var vn = selectedView();
-                if (vn != null)
-                  highlightSelectedView(vn);
               });
       }
     });
@@ -77,23 +82,10 @@ function viewId(view_name) {
   return "v_" + view_name.replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
-function highlightSelectedView(view_name) {
-  if (view_name != null && view_name != '') {
-    $("#navlist a").css('background-color', '#FFFFFF');	
-    $("#" + viewId(view_name)).css('background-color', 'rgb(238,238,238)');
-  }
-}
-
 function selectView(view_name) {
-  highlightSelectedView(view_name);
   $.cookie('ganglia-selected-view-' + window.name, view_name);
   $("#vn").val(view_name);
   ganglia_form.submit();
-}
-
-function selectedView() {
-  var vn = $.cookie('ganglia-selected-view-' + window.name);
-  return (vn == null || vn == '') ? null : vn;
 }
 
 function createView() {
@@ -148,6 +140,14 @@ function autoRotationChooser() {
         "", 
         function(data) {$("#tabs-autorotation-chooser").html(data);});
 }
+
+function liveDashboardChooser() {
+  $("#tabs-livedashboard-chooser").html('<img src="img/spinner.gif">');
+  $.get('tasseo.php', 
+        "", 
+        function(data) {$("#tabs-livedashboard-chooser").html(data);});
+}
+
 function updateViewTimeRange() {
   alert("Not implemented yet");
 }
@@ -208,6 +208,36 @@ function initShowEvent() {
   }
 }
 
+var TIME_SHIFT_BASE_ID = "time_shift_";
+var TIME_SHIFT_BASE_ID_LEN = TIME_SHIFT_BASE_ID.length;
+
+function initTimeShift() {
+  $("[id^=" + TIME_SHIFT_BASE_ID + "]").each(function() {
+    $(this).button();
+    $(this).removeAttr("checked");
+    $(this).button('refresh');
+  });
+    
+  if ($("#timeshift_overlay").length > 0) {
+    $("#timeshift_overlay").button();
+    $("#timeshift_overlay").removeAttr("checked");
+    $("#timeshift_overlay").button('refresh');
+  }
+}
+
+function showTimeshiftOverlay(show) {
+  $("[id^=" + TIME_SHIFT_BASE_ID + "]").each(function() {
+      if (show)
+        $(this).attr("checked", 'checked');
+      else
+        $(this).removeAttr("checked");
+      $(this).button('refresh');
+      var graphId = GRAPH_BASE_ID + 
+	$(this).attr('id').slice(TIME_SHIFT_BASE_ID_LEN);
+      showTimeShift(graphId, show);
+    });
+}
+
 function showAllEvents(show) {
   $("[id^=" + SHOW_EVENTS_BASE_ID + "]").each(function() {
       if (show)
@@ -229,6 +259,19 @@ function showEvents(graphId, show) {
       return;
     var paramStr = "&event=";
     paramStr += show ? "show" : "hide"
+    var d = new Date();
+    paramStr += "&_=" + d.getTime();
+    src = jQuery.param.querystring(src, paramStr);
+    graph.attr("src", src);
+  }
+
+function showTimeShift(graphId, show) {
+    var graph = $("#" + graphId);
+    var src = graph.attr("src");
+    if ((src.indexOf("graph.php") != 0) &&
+        (src.indexOf("./graph.php") != 0))
+      return;
+    var paramStr = show ? "&ts=1" : "&ts=0";
     var d = new Date();
     paramStr += "&_=" + d.getTime();
     src = jQuery.param.querystring(src, paramStr);

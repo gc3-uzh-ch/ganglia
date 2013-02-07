@@ -18,7 +18,7 @@ retrieve_metrics_cache();
 <link rel="stylesheet" href="css/jquery.mobile-1.0.min.css" />
 <script src="js/jquery-1.7.1.min.js"></script>
 <script src="js/jquery.mobile-1.0.min.js"></script>
-<script type="text/javascript" src="js/jquery.liveSearch.js"></script>
+<script type="text/javascript" src="js/jquery.livesearch.min.js"></script>
 <link type="text/css" href="css/jquery.liveSearch.css" rel="stylesheet" />
 <style>
 .ui-mobile .ganglia-mobile {  background: #e5e5e5 top center repeat-x; }
@@ -31,8 +31,10 @@ dt code, dd code { font-size:1.3em; line-height:150%; }
 <body> 
 <?php
   //  Build cluster array. So we know if there is more than 1
-  foreach ( $index_array['cluster'] as $hostname => $clustername ) {
-    $cluster_array[$clustername][] = $hostname;
+  foreach ( $index_array['cluster'] AS $hostname => $clusters ) {
+    foreach ($clusters AS $clustername) {
+      $cluster_array[$clustername][] = $hostname;
+    }
   }
   
   $cluster_names = array_keys($cluster_array);
@@ -98,7 +100,13 @@ foreach ( $cluster_names as $index => $clustername ) {
 	// List all hosts in the cluster
 	asort($cluster_array[$clustername]);
 	foreach ( $cluster_array[$clustername] as $index => $hostname ) {
-	  print '<li><a href="mobile_helper.php?show_host_metrics=1&h=' . $hostname . '&c=' . $clustername . '&r=' . $conf['default_time_range'] . '&cs=&ce=">' . strip_domainname($hostname) . '</a></li>';  
+	  print '<li><a href="mobile_helper.php?show_host_metrics=1&h=' . $hostname . '&c=' . $clustername . '&r=' . $conf['default_time_range'] . '&cs=&ce=">';
+    if ($conf['strip_domainname']) {
+      print strip_domainname($hostname);
+    } else {
+      print $hostname;
+    } 
+    print '</a></li>';  
 	}
 	?>
       </ul>

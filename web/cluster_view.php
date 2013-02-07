@@ -170,7 +170,7 @@ function get_host_metric_graphs($showhosts,
   // metric. The $start,$end variables comes from get_context.php, 
   // included in index.php.
   // Do this only if person has not selected a maximum set of graphs to display
-  if ($max_graphs == 0)
+  if ($max_graphs == 0 && $showhosts == 2 )
     list($min, $max) = find_limits($sorted_hosts, $metricname);
 
   // Second pass to output the graphs or metrics.
@@ -188,6 +188,10 @@ function get_host_metric_graphs($showhosts,
     $additional_host_img_html_args = "class=host_${size}_zoomable";
 
   foreach ($sorted_hosts as $host => $value) {
+    if (isset($hosts_down[$host]) and $hosts_down[$host] && isset($conf['cluster_hide_down_hosts']) && $conf['cluster_hide_down_hosts']) {
+      // If we're hiding DOWN hosts, we skip to next iteration of the loop.
+      continue;
+    }
     $host_url = rawurlencode($host);
     
     $host_link="\"?c=$cluster_url&amp;h=$host_url&amp;$get_metric_string\"";
@@ -240,7 +244,9 @@ function get_host_metric_graphs($showhosts,
     if ($ce)
       $graphargs .= "&amp;ce=" . rawurlencode($ce);
     
-    if ($showhosts == 1 && $max_graphs == 0 )
+    // If we want scaling to be the same in clusterview we need to set $max and $min
+    // values
+    if ($showhosts == 2 && $max_graphs == 0 )
       $graphargs .= "&amp;x=$max&amp;n=$min";
     
     if (isset($vlabel))
@@ -287,7 +293,8 @@ function get_host_metric_graphs($showhosts,
   
   $data->assign("sorted_list", $sorted_list);
   
-  // If there is an overflow list
+  // If there is an overflow list. These are hosts for which we don't show graphs
+  // just names
   if (sizeof($overflow_list) > 0) {
     $data->assign("overflow_list_header", '<p><table width=80%><tr><td align=center class=metric>
     <a href="#" id="overflow_list_button"onclick="$(\'#overflow_list\').toggle();" class="button ui-state-default ui-corner-all" title="Toggle overflow list">Show more hosts (' 
@@ -408,8 +415,8 @@ function get_cluster_optional_reports($conf,
 
  foreach ($reports["included_reports"] as $index => $report_name ) {
    if (! in_array( $report_name, $reports["excluded_reports"])) {
-     $optional_reports .= "<A HREF=\"./graph_all_periods.php?$graph_args&amp;g=" . $report_name . "&amp;z=large&amp;c=$cluster_url\">
-    <IMG BORDER=0 style=\"padding:2px;\" $additional_cluster_img_html_args title=\"$cluster_url\" SRC=\"./graph.php?$graph_args&amp;g=" . $report_name ."&amp;z=medium&amp;c=$cluster_url\"></A>
+     $optional_reports .= "<A HREF=\"./graph_all_periods.php?$graph_args&amp;g=" . $report_name . "&amp;z=large\">
+    <IMG BORDER=0 style=\"padding:2px;\" $additional_cluster_img_html_args title=\"$cluster_url\" SRC=\"./graph.php?$graph_args&amp;g=" . $report_name ."&amp;z=medium\"></A>
 ";
    }
  }
@@ -536,8 +543,8 @@ if (! $refresh) {
   $data->assign("sort", $sort);
   $data->assign("range", $range);
   
-  $showhosts_levels = array(1 => array('checked'=>'', 'name'=>'Auto'),
-			    2 => array('checked'=>'', 'name'=>'Same'),
+  $showhosts_levels = array(2 => array('checked'=>'', 'name'=>'Auto'),
+			    1 => array('checked'=>'', 'name'=>'Same'),
 			    0 => array('checked'=>'', 'name'=>'None'),
 			    );
   $showhosts_levels[$showhosts]['checked'] = 'checked';
@@ -603,9 +610,9 @@ if (isset($conf['show_stacked_graphs']) and
     $conf['show_stacked_graphs'] == 1  and 
     ! preg_match("/_report$/", $metricname)) {
   $cluster_url = rawurlencode($clustername);
-  $stacked_args = "m=$metricname&c=$cluster_url&r=$range&st=$cluster[LOCALTIME]";
+  $stacked_args = "m=$metricname&amp;c=$cluster_url&amp;r=$range&amp;st=$cluster[LOCALTIME]";
   if (isset($user['host_regex']))
-    $stacked_args .= "&host_regex=" . $user['host_regex'];
+    $stacked_args .= "&amp;host_regex=" . $user['host_regex'];
   $data->assign("stacked_graph_args", $stacked_args);
 }
 

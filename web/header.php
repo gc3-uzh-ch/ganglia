@@ -145,6 +145,7 @@ if ($context == "cluster") {
 } elseif ( $context == "views") {
    if(  checkAccess( GangliaAcl::ALL_VIEWS, GangliaAcl::EDIT, $conf ) ) {
        $alt_view = '<button onclick="return false" id="create_view_button">Create View</button>';
+       $alt_view .= '&nbsp;&nbsp;<button onclick="return false" id="delete_view_button">Delete View</button>';
    }
 }
 
@@ -154,7 +155,7 @@ $data->assign("alt_view", $alt_view);
 $node_menu = "";
 if (($context != 'views') && ($context != 'compare_hosts')) {
   if ($parentgrid) {
-    $node_menu .= "<B><A HREF=\"$parentlink?gw=back&amp;gs=$gridstack_url&amp;$get_metric_string\">". "$parentgrid $meta_designator</A></B> ";
+    $node_menu .= "<B><A HREF=\"$parentlink?gw=back&amp;gs=$gridstack_url&amp;$get_metric_string\">". "$parentgrid ${conf['meta_designator']}</A></B> ";
     $node_menu .= "<B>&gt;</B>\n";
   }
 
@@ -162,7 +163,7 @@ if (($context != 'views') && ($context != 'compare_hosts')) {
   if ((($self != "unspecified") && !$parentgrid) ||
       $conf['always_display_grid_view']) {
     $mygrid = ($self == "unspecified") ? "" : $self;
-    $node_menu .= "<B><A HREF=\"./?$get_metric_string\">$mygrid $meta_designator</A></B> ";
+    $node_menu .= "<B><A HREF=\"./?$get_metric_string\">$mygrid ${conf['meta_designator']}</A></B> ";
     $node_menu .= "<B>&gt;</B>\n";
   }
 
@@ -190,7 +191,7 @@ if (($context != 'views') && ($context != 'compare_hosts')) {
       if ($k == $self) continue;
       if (isset($v['GRID']) and $v['GRID']) {
         $url = $v['AUTHORITY'];
-        $node_menu .="<OPTION VALUE=\"$url\">$k $meta_designator\n";
+        $node_menu .="<OPTION VALUE=\"$url\">$k ${conf['meta_designator']}\n";
       } else {
         $url = rawurlencode($k);
         $node_menu .="<OPTION VALUE=\"$url\">$k\n";
@@ -243,9 +244,10 @@ $data->assign("node_menu", $node_menu);
 //////////////////// Build the metric menu ////////////////////////////////////
 
 if (count($metrics)) {
-  $firsthost = key($metrics);
-  foreach ($metrics[$firsthost] as $m => $foo)
-    $context_metrics[] = $m;
+  foreach ($metrics as $firsthost => $bar) {
+      foreach ($metrics[$firsthost] as $m => $foo)
+        $context_metrics[$m] = $m;
+  }
   foreach ($reports as $r => $foo)
     $context_metrics[] = $r;
 }
@@ -261,14 +263,14 @@ if (!$physical) {
    if ($cs or $ce)
       $context_ranges[]="custom";
 
-   $range_menu = "<B>Last</B>&nbsp;&nbsp;";
+   $range_menu = "Last&nbsp;&nbsp;";
    foreach ($context_ranges as $v) {
       $url=rawurlencode($v);
       if ($v == $range)
 $checked = "checked=\"checked\"";
       else
 $checked = "";
-      $range_menu .= "<input OnChange=\"ganglia_submit();\" type=\"radio\" id=\"range-$v\" name=\"r\" value=\"$v\" $checked/><label for=\"range-$v\">$v</label>";
+      $range_menu .= "<input OnChange=\"ganglia_form.submit();\" type=\"radio\" id=\"range-$v\" name=\"r\" value=\"$v\" $checked/><label for=\"range-$v\">$v</label>";
 
    }
 
@@ -277,27 +279,31 @@ $checked = "";
 $data->assign("range_menu", $range_menu);
 
 #
-# Build comma separated list of metric strings
-#
-if (is_array($context_metrics)) {
-  sort($context_metrics);
-
-  $available_metrics = array();
-
-  foreach ($context_metrics as $key) {
-    $available_metrics[] = "\"$key\"";
-  }
-
-  $data->assign("available_metrics", join(",", $available_metrics));
-} else {
-  $data->assign("available_metrics", "");
-}
-
-#
 # Only compute metric-picker options if we have some, and are in cluster context.
 #
 if (is_array($context_metrics) and $context == "cluster") {
   $picker_metrics = array();
+
+  # Find all the optional reports
+  if ($handle = opendir($conf['gweb_root'] . '/graph.d')) {
+
+    // If we are using RRDtool reports can be json or PHP suffixes
+    if ( $conf['graph_engine'] == "rrdtool" )
+      $report_suffix = "php|json";
+    else
+      $report_suffix = "json";
+
+    while (false !== ($file = readdir($handle))) {
+      if ( preg_match("/(.*)(_report)\.(" . $report_suffix .")/", $file, $out) ) {
+        if ( ! in_array($out[1] . "_report", $context_metrics) )
+          $context_metrics[] = $out[1] . "_report";
+      }
+    }
+
+    closedir($handle);
+  }
+
+  sort($context_metrics);
 
   foreach ($context_metrics as $key) {
     $url = rawurlencode($key);
@@ -328,7 +334,7 @@ if ($context == "meta" or $context == "cluster") {
     $context_sorts[]="by hosts down";
   }
 
-  $sort_menu = "<B>Sorted</B>&nbsp;&nbsp;";
+  $sort_menu = "Sorted&nbsp;&nbsp;";
   foreach ($context_sorts as $v) {
     $url=rawurlencode($v);
     if ($v == $sort)
@@ -389,7 +395,7 @@ $custom_time = "";
 if ( in_array($context , array ("meta", "cluster", "host", "views", "decompose_graph", "compare_hosts") ) ) {
    $examples = "Feb 27 2007 00:00, 2/27/2007, 27.2.2007, now -1 week,"
       . " -2 days, start + 1 hour, etc.";
-   $custom_time = "&nbsp;&nbsp;or <span class=\"nobr\">from <input type=\"TEXT\" title=\"$examples\" NAME=\"cs\" ID=\"datepicker-cs\" SIZE=\"17\"";
+   $custom_time = "or <span class=\"nobr\">from <input type=\"TEXT\" title=\"$examples\" NAME=\"cs\" ID=\"datepicker-cs\" SIZE=\"17\"";
    if ($cs)
       $custom_time .= " value=\"$cs\"";
    $custom_time .= "> to <input type=\"TEXT\" title=\"$examples\" name=\"ce\" ID=\"datepicker-ce\" SIZE=\"17\"";
@@ -439,7 +445,7 @@ $max_graphs_values .= "<option>" . $value . "</option>";
   }
 
   $data->assign("additional_filter_options", 'Show only nodes matching <input name=host_regex ' .$set_host_regex_value . '>'
-   . '<input class=submit_button type="SUBMIT" VALUE="Filter">'
+   . '<input class="header_btn" type="SUBMIT" VALUE="Filter">'
    . '&nbsp;<span class="nobr">Max graphs to show <select onChange="ganglia_submit();" name="max_graphs">' . $max_graphs_values . '</select></span>'
     );
 } else

@@ -27,7 +27,8 @@ if ( $conf['auth_system'] == 'readonly' ) {
 
 # If events_auth_token is specified in conf.php use that.
 if ( isset($conf['events_auth_token']) ) {
-   if ( ! ( isset($_REQUEST['token']) && $conf['events_auth_token'] == $_REQUEST['token'] ) ) {
+   if ( ! ( isset($_REQUEST['token']) && 
+	    $conf['events_auth_token'] == $_REQUEST['token'] ) ) {
       api_return_error( "Error: Events Auth Token is invalid. Please check token" );
    }
 }
@@ -39,7 +40,9 @@ if ( !isset($_REQUEST['action']) ) {
 switch ( $_REQUEST['action'] ) {
  
   case "add":
-    if ( ! isset($_REQUEST['start_time']) || ! isset($_REQUEST['summary']) || ! isset($_REQUEST['host_regex']) ) {
+    if ( ! isset($_REQUEST['start_time']) || 
+	 ! isset($_REQUEST['summary']) || 
+	 ! isset($_REQUEST['host_regex']) ) {
       api_return_error( "Error: You need to supply start_time, summary, host_regex at a minimum" );
     }
 
@@ -58,12 +61,24 @@ switch ( $_REQUEST['action'] ) {
     // Generate a unique event ID. This is so we can reference it later
     $event_id = uniqid();
 
-    $event = array( "event_id" => $event_id, "start_time" => $start_time, "summary" => sanitize($_REQUEST['summary']),
-      "grid" => $grid, "cluster" => $cluster, "host_regex" => $_REQUEST['host_regex'],
-      );
+    $event = array( "event_id" => $event_id, 
+		    "start_time" => $start_time, 
+		    "summary" => sanitize($_REQUEST['summary']),
+		    "grid" => $grid, 
+		    "cluster" => $cluster, 
+		    "host_regex" => $_REQUEST['host_regex'],
+		    "description" => $description
+		    );
 
-    if ( isset($_REQUEST['end_time']) )
-      $event['end_time'] = $_REQUEST['end_time'] == "now" ? time() : strtotime($_REQUEST['end_time']);
+    if ( isset($_REQUEST['end_time']) ) {
+        if ( $_REQUEST['end_time'] == "now" )
+            $end_time = time();
+        else if ( is_numeric($_REQUEST['end_time']) )
+            $end_time = $_REQUEST['end_time'];
+        else
+            $end_time = strtotime($_REQUEST['end_time']);
+        $event['end_time'] = $end_time;
+    }
 
     $message = ganglia_events_add( $event );
     break;
@@ -80,6 +95,11 @@ switch ( $_REQUEST['action'] ) {
     }
     $message = ganglia_event_delete( $_REQUEST['event_id'] );
 
+    break;
+
+  case "list":
+
+    $message = ganglia_events_get();
     break;
 
   default:

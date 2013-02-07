@@ -572,10 +572,17 @@ function get_available_views() {
 	  }
 
 	  $view = json_decode(file_get_contents($view_config_file), TRUE);
-	  // Check whether view type has been specified ie. regex. If not it's standard view
-	  isset($view['view_type']) ? $view_type = $view['view_type'] : $view_type = "standard";
-	  $available_views[] = array ( "file_name" => $view_config_file, "view_name" => $view['view_name'],
-              "default_size" => $view['default_size'], "items" => $view['items'], "view_type" => $view_type);
+	  // Check whether view type has been specified ie. regex. 
+          // If not it's standard view
+	  $view_type = 
+            isset($view['view_type']) ? $view['view_type'] : "standard";
+          $default_size = isset($view['default_size']) ? 
+	    $view['default_size'] : $conf['default_view_graph_size'];
+	  $available_views[] = array ("file_name" => $view_config_file, 
+                                      "view_name" => $view['view_name'],
+                                      "default_size" => $default_size, 
+                                      "items" => $view['items'], 
+                                      "view_type" => $view_type);
 
 	  unset($view);
 
@@ -665,7 +672,7 @@ function get_view_graph_elements($view) {
 	    $graph_args_array[] = "n=" .$item['lower_limit'];
 
 	  if (isset($item['vertical_label']))
-	    $graph_args_array[] = "vl=" .$item['vertical_label'];
+	    $graph_args_array[] = "vl=" . urlencode($item['vertical_label']);
 
 	  if (isset($item['title']))
 	    $graph_args_array[] = "title=" . urlencode($item['title']);
@@ -678,7 +685,7 @@ function get_view_graph_elements($view) {
       $graph_args_array[] = "glegend=" . $item["glegend"];
 
 	  if ( isset($item['cluster']) ) {
-	    $graph_args_array[] = "c=" . $item['cluster'];
+	    $graph_args_array[] = "c=" . urlencode($item['cluster']);
 	  }
 
 	  if ( isset($item['exclude_host_from_legend_label']) ) {
@@ -711,7 +718,7 @@ function get_view_graph_elements($view) {
 	  if (isset($item['hostname'])) {
             $hostname = $item['hostname'];
             $cluster = array_key_exists($hostname, $index_array['cluster']) ?
-	      $index_array['cluster'][$hostname] : NULL;
+	      $index_array['cluster'][$hostname][0] : NULL;
           } else if (isset($item['cluster'])) {
 	    $hostname = "";
             $cluster = $item['cluster'];
@@ -720,21 +727,33 @@ function get_view_graph_elements($view) {
             $cluster = "";
 	  }
 
-	  $graph_args_array[] = "h=$hostname";
-	  $graph_args_array[] = "c=$cluster";
+	  $graph_args_array[] = "h=" . urlencode($hostname);
+	  $graph_args_array[] = "c=" . urlencode($cluster);
 
 	  if (isset($item['vertical_label']))
-	    $graph_args_array[] = "vl=" .$item['vertical_label'];
+	    $graph_args_array[] = "vl=" . urlencode($item['vertical_label']);
 
 	  if (isset($item['title']))
 	    $graph_args_array[] = "title=" . urlencode($item['title']);
 
-	  $view_elements[] = array ( "graph_args" => join("&", $graph_args_array), 
-	    "hostname" => $hostname,
-	    "cluster" => $cluster,
-	    "name" => $name
-	  );
+          if (isset($item['warning'])) {
+            $view_e['warning'] = $item['warning'];
+            $graph_args_array[] = "warn=" . $item['warning'];
+          }
+          if (isset($item['critical'])) {
+            $view_e['critical'] = $item['critical'];
+            $graph_args_array[] = "crit=" . $item['critical'];
+          }
 
+
+          $view_e["graph_args"] = join("&", $graph_args_array);
+          $view_e['hostname'] = $hostname;
+          $view_e['cluster'] = $cluster;
+          $view_e['name'] = $name;
+                  
+	  $view_elements[] = $view_e;
+
+          unset($view_e);
 	  unset($graph_args_array);
 
 	}
@@ -762,9 +781,10 @@ function get_view_graph_elements($view) {
 	$query = $item['hostname'];
 	foreach ( $index_array['hosts'] as $key => $host_name ) {
 	  if ( preg_match("/$query/", $host_name ) ) {
-	    $cluster = $index_array['cluster'][$host_name];
-	    $graph_args_array[] = "h=$host_name";
-	    $graph_args_array[] = "c=$cluster";
+	    $clusters = $index_array['cluster'][$host_name];
+	    foreach ($clusters AS $cluster) {
+	    $graph_args_array[] = "h=" . urlencode($host_name);
+	    $graph_args_array[] = "c=" . urlencode($cluster);
 
 	    $view_elements[] = array ( "graph_args" => $metric_suffix . "&" . join("&", $graph_args_array), 
 	      "hostname" => $host_name,
@@ -772,6 +792,7 @@ function get_view_graph_elements($view) {
 	      "name" => $name);
 
 	    unset($graph_args_array);
+            }
 
 	  }
 	}
@@ -1046,7 +1067,9 @@ function build_aggregate_graph_config ($graph_type,
     foreach ( $index_array['hosts'] as $key => $host_name ) {
       if ( preg_match("/$query/i", $host_name ) ) {
         // We can have same hostname in multiple clusters
-        $matches[] = $host_name . "|" . $index_array['cluster'][$host_name]; 
+        foreach ($index_array['cluster'][$host_name] AS $cluster) {
+            $matches[] = $host_name . "|" . $cluster;
+        }
       }
     }
   } 
@@ -1057,12 +1080,14 @@ function build_aggregate_graph_config ($graph_type,
       foreach ( $index_array['metrics'] as $key => $m_name ) {
         if ( preg_match("/$query/i", $key, $metric_subexpr ) ) {
           if (isset($metric_subexpr) && count($metric_subexpr) > 1) {
-            $legend = "";
-            for ($i = 1; $i < count($metric_subexpr); $i++)
-              $legend .= $metric_subexpr[$i];
-	    $metric_matches[$key] = $legend;
-          } else
+            $legend = array();
+            for ($i = 1; $i < count($metric_subexpr); $i++) {
+              $legend[] = $metric_subexpr[$i];
+            }
+	    $metric_matches[$key] = implode(' ', $legend);
+          } else {
             $metric_matches[$key] = $key;
+          }
         }
       }
     }

@@ -6,20 +6,23 @@
 <meta http-equiv="Content-type" content="text/html; charset=utf-8">
 <link type="text/css" href="css/smoothness/jquery-ui-1.8.14.custom.min.css" rel="stylesheet" />
 <link type="text/css" href="css/jquery.liveSearch.css" rel="stylesheet" />
+<link type="text/css" href="css/jquery.multiselect.css" rel="stylesheet" />
+<link type="text/css" href="css/jquery.flot.events.css" rel="stylesheet" />
 <link type="text/css" href="./styles.css" rel="stylesheet" />
 <script type="text/javascript" src="js/jquery-1.7.1.min.js"></script>
 <script type="text/javascript" src="js/jquery-ui-1.8.14.custom.min.js"></script>
-<script type="text/javascript" src="js/jquery.liveSearch.js"></script>
+<script type="text/javascript" src="js/jquery.livesearch.min.js"></script>
 <script type="text/javascript" src="js/ganglia.js"></script>
 <script type="text/javascript" src="js/jquery.gangZoom.js"></script>
 <script type="text/javascript" src="js/jquery.cookie.js"></script>
 <script type="text/javascript" src="js/jquery-ui-timepicker-addon.js"></script>
 <script type="text/javascript" src="js/jquery.ba-bbq.min.js"></script>
 <script type="text/javascript" src="js/combobox.js"></script>
+<script type="text/javascript" src="js/jquery.scrollTo-1.4.2-min.js"></script>
+<script type="text/javascript" src="js/jquery.buttonsetv.js"></script>
 <script type="text/javascript">
     var server_utc_offset={$server_utc_offset};
-    var availablemetrics = [{$available_metrics}];
-
+    
     var g_refresh_timer = setTimeout("refresh()", {$refresh} * 1000);
 
     function refreshHeader() {
@@ -119,7 +122,6 @@
 
       {$is_metrics_picker_disabled}
 
-      $(".submit_button").button();
       $(".header_btn").button();
     });
 
@@ -194,6 +196,7 @@
     }
 
     initShowEvent();
+    initTimeShift();
   });
 
 
@@ -227,41 +230,31 @@
   <li><a href="events.php">Events</a></li>
 {/if}
   <li><a href="#tabs-autorotation" onclick="autoRotationChooser();">Automatic Rotation</a></li>
+  <li><a href="#tabs-livedashboard" onclick="liveDashboardChooser();">Live Dashboard</a></li>  
   <li><a href="#tabs-mobile" onclick="window.location.href='mobile.php';">Mobile</a></li>
 </ul>
 
 <div id="tabs-main">
 <form action="{$page}" method="GET" name="ganglia_form">
-  <table id="table_top_chooser" width="100%" cellpadding="4" cellspacing="0" border="0">
-  <tr bgcolor="#DDDDDD">
-     <td bgcolor="#DDDDDD">
-     <big><b id="page_title">{$page_title} for {$date}</b></big>
-     </td>
-     <td bgcolor="#DDDDDD" align="right">
-     <input class="submit_button" type="submit" value="Get Fresh Data" />
-     </td>
-  </tr>
-  <tr>
-     <td>
-    <div id="range_menu">{$range_menu}{$custom_time}</div>
-     </td>
-     <td align="right" class="nobr">
-      {$additional_buttons}&nbsp;&nbsp;{$alt_view}
-     </td>
-  </tr>
-  <tr>
-  <td colspan="2">
-  <div id="sort_menu">
-   <b>Metric</b>&nbsp;&nbsp; <select name="m" id="metrics-picker">{$picker_metrics}</select>&nbsp;&nbsp;
+  <div style="background-color:#dddddd;padding:5px;">
+     <big style="float:left;"><b id="page_title">{$page_title} for {$date}</b></big><input style="float:right;" class="header_btn" type="submit" value="Get Fresh Data"/><div style="clear:both"></div>
+  </div>
+  <div style="padding:5px 5px 0 5px;">
+    <div style="float:left;" id="range_menu" class="nobr">{$range_menu}</div>
+    <div style="float:left;" id="custom_range_menu">{$custom_time}</div>
+    <div style="float:right;">{$additional_buttons}&nbsp;&nbsp;{$alt_view}</div>
+    <div style="clear:both;"></div>
+  </div>
+  <div id="sort_menu" style="padding:5px 5px 0 5px;">
+   Metric&nbsp;&nbsp; <select name="m" id="metrics-picker">{$picker_metrics}</select>&nbsp;&nbsp;
      {$sort_menu}
   </div>
-  </td>
-  </tr>
 {if $node_menu != ""}
-  <tr><td colspan="2">{$node_menu}&nbsp;&nbsp;{$additional_filter_options}</td>
-</tr>
+  <div id="sort_menu" style="padding:5px 5px 0 5px;">
+    {$node_menu}&nbsp;&nbsp;{$additional_filter_options}
+  </div>
 {/if}
-  </TABLE>
+
 <input type="hidden" name="tab" id="selected_tab" value="{$selected_tab}">
 <input type="hidden" id="vn" name="vn" value="{$view_name}">
 {if $overlay_events}
@@ -269,5 +262,5 @@
 {else}
 <input type="hidden" id="overlay_events" value="false">
 {/if}
-<HR SIZE="1" NOSHADE>
+<hr size="1" noshade>
 <!-- End header.tpl -->

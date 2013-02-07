@@ -13,6 +13,7 @@ $data->assign("hostname", $hostname);
 $data->assign("graph_engine", $conf['graph_engine']);
 
 $metric_groups_initially_collapsed = isset($conf['metric_groups_initially_collapsed']) ? $conf['metric_groups_initially_collapsed'] : TRUE;
+$remember_open_metric_groups = isset($conf['remember_open_metric_groups']) ? $conf['remember_open_metric_groups'] : TRUE;
 
 $graph_args = "h=$hostname&amp;$get_metric_string&amp;st=$cluster[LOCALTIME]";
 
@@ -28,15 +29,32 @@ if ( is_file($conf['conf_dir'] . "/default.json") ) {
   $default_reports = array_merge($default_reports,json_decode(file_get_contents($conf['conf_dir'] . "/default.json"), TRUE));
 }
 
+$cluster_file = $conf['conf_dir'] .
+   "/cluster_" .
+   str_replace(" ", "_", $clustername) .
+   ".json";
+
+$cluster_override_reports = array("included_reports" => array(), "excluded_reports" => array());
+if (is_file($cluster_file)) {
+   $cluster_override_reports = array_merge($cluster_override_reports,
+                                   json_decode(file_get_contents($cluster_file), TRUE));
+} 
+
 $host_file = $conf['conf_dir'] . "/host_" . $hostname . ".json";
 $override_reports = array("included_reports" => array(), "excluded_reports" => array());
 if ( is_file($host_file) ) {
   $override_reports = array_merge($override_reports, json_decode(file_get_contents($host_file), TRUE));
+} else {
+  // If there is no host file, look for a default cluster file
+  $cluster_file = $conf['conf_dir'] . "/cluster_" . $clustername . ".json";
+  if ( is_file($cluster_file) ) {
+    $override_reports = array_merge($override_reports, json_decode(file_get_contents($cluster_file), TRUE));
+  }
 }
 
 // Merge arrays
-$reports["included_reports"] = array_merge( $default_reports["included_reports"] , $override_reports["included_reports"]);
-$reports["excluded_reports"] = array_merge($default_reports["excluded_reports"] , $override_reports["excluded_reports"]);
+$reports["included_reports"] = array_merge( $default_reports["included_reports"] , $cluster_override_reports["included_reports"], $override_reports["included_reports"]);
+$reports["excluded_reports"] = array_merge($default_reports["excluded_reports"] , $cluster_override_reports["excluded_reports"],  $override_reports["excluded_reports"]);
 
 // Remove duplicates
 $reports["included_reports"] = array_unique($reports["included_reports"]);
@@ -185,7 +203,7 @@ $open_groups = NULL;
 if (isset($_GET['metric_group']) && ($_GET['metric_group'] != "")) {
   $open_groups = explode ("_|_", $_GET['metric_group']);
 } else {
-  if (isset($_SESSION['metric_group']) && ($_SESSION['metric_group'] != ""))
+  if ($remember_open_metric_groups && isset($_SESSION['metric_group']) && ($_SESSION['metric_group'] != ""))
     $open_groups = explode ("_|_", $_SESSION['metric_group']);
 }
 
@@ -260,6 +278,7 @@ $data->assign("g_open_metric_groups", $g_new_open_groups);
 
 $data->assign('GRAPH_BASE_ID', $GRAPH_BASE_ID);
 $data->assign('SHOW_EVENTS_BASE_ID', $SHOW_EVENTS_BASE_ID);
+$data->assign('TIME_SHIFT_BASE_ID', $TIME_SHIFT_BASE_ID);
 
 $dwoo->output($tpl, $data);
 ?>

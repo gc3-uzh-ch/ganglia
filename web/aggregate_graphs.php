@@ -1,13 +1,3 @@
-<style>
-#aggregate_graph_table_form {
-   font-size: 12px;
-}
-#show_direct_link {
-  background-color: #eeeeee;
-  text-align: center;
-  padding: 5px;
-}
-</style>
 <script>
   function refreshAggregateGraph() {
     $("#aggregate_graph_display img").each(function (index) {
@@ -38,6 +28,25 @@
   }
 
 $(function() {
+   
+  var availablemetrics = [
+<?php
+
+  require_once('./eval_conf.php');
+  require_once('./functions.php');
+
+  $available_metrics = array();
+  retrieve_metrics_cache();
+
+  ksort($index_array['metrics']);
+  foreach ($index_array['metrics'] as $key => $value) {
+    $available_metrics[] = "\"$key\"";
+  }
+
+  print join(",", $available_metrics);
+  unset($available_metrics);
+?>];
+   
   $( ".ag_buttons" ).button();
   $( "#graph_type_menu" ).buttonset();
   $( "#graph_legend_menu" ).buttonset();
@@ -68,8 +77,13 @@ $(function() {
   });
 
   $("#aggregate_graph_table_form input[name=gtype]").change(function() {
-    $.cookie("ganglia-aggregate-graph-gtype" + window.name,
-	   $("#aggregate_graph_table_form input[name=gtype]:checked").val());
+    var gtype = $("#aggregate_graph_table_form input[name=gtype]:checked").val();
+    $.cookie("ganglia-aggregate-graph-gtype" + window.name, gtype);
+  });
+
+  $("#aggregate_graph_table_form input[name=glegend]").change(function() {
+    var glegend = $("#aggregate_graph_table_form input[name=glegend]:checked").val();
+    $.cookie("ganglia-aggregate-graph-glegend" + window.name, glegend);
   });
 
   function restoreAggregateGraph() {
@@ -78,8 +92,20 @@ $(function() {
       $("#hreg").val(hreg);
   
     var gtype = $.cookie("ganglia-aggregate-graph-gtype" + window.name);
-    if (gtype != null)
-      $("#aggregate_graph_table_form input[name=gtype]").val([gtype]);
+    if (gtype != null) {
+      if (gtype == "line")
+	$("#gtline").click();
+      else
+	$("#gtstack").click();
+    }
+
+    var glegend = $.cookie("ganglia-aggregate-graph-glegend" + window.name);
+    if (glegend != null) {
+      if (glegend == "show")
+	$("#glshow").click();
+      else
+	$("#glhide").click();
+    }
   
     var metric = $.cookie("ganglia-aggregate-graph-metric" + window.name);
     if (metric != null)
@@ -132,7 +158,7 @@ $(function() {
 <td colspan=2><input name="vl" id="vl" value="" size=60></td>
 </tr>
 <tr>
-<td>Limits</td><td>Upper:<input name="x" id="x" value="" size=10></td><td>Lower:<input name="n" id="n" value="" size=10></td>
+<td>Limits</td><td>Upper:<input style="margin-left:5px;margin-right:10px;" name="x" id="x" value="" size=10>Lower:<input style="margin-left:5px;" name="n" id="n" value="" size=10></td>
 </tr>
 <tr>
 <td>Host Regular expression e.g. web-[0,4], web or (web|db):</td>
@@ -162,7 +188,7 @@ $(function() {
 </table>
 </form>
 </div>
-<div style="margin-bottom:5px;" id="show_direct_link"></div>
+<div style="margin-bottom:5px;background-color:#eeeeee;text-align:center;padding:5px;" id="show_direct_link"></div>
 <div id="aggregate_graph_display">
 </div>
 

@@ -1,4 +1,6 @@
 <?php
+// vim: tabstop=2:softtabstop=2:shiftwidth=2:expandtab
+
 include_once "./eval_conf.php";
 include_once "./get_context.php";
 include_once "./functions.php";
@@ -43,11 +45,15 @@ function build_rrdtool_args_from_json( &$rrdtool_graph, $graph_config ) {
   }
   
   $series = '';
+  $cdef = '';
+  $graphdef = '';
   
   $stack_counter = 0;
 
   // Available line types
   $line_widths = array("1","2","3");
+
+  $total_ids = array();
 
   // Loop through all the graph items
   foreach( $graph_config[ 'series' ] as $index => $item ) {
@@ -65,8 +71,10 @@ function build_rrdtool_args_from_json( &$rrdtool_graph, $graph_config ) {
      // Make sure metric file exists. Otherwise we'll get a broken graph
      if ( is_file($metric_file) ) {
 
-       # Need this when defining graphs that may use same metric names
-      $unique_id = "a" . $index;
+       // Need this when defining graphs that may use same metric names
+       $unique_id = "a" . $index;
+
+       $total_ids[] = $unique_id;
      
        $label = str_pad( sanitize( $item[ 'label' ] ), $max_label_length );
 
@@ -76,6 +84,12 @@ function build_rrdtool_args_from_json( &$rrdtool_graph, $graph_config ) {
        if ( isset($item[ 'ds' ]) )
          $DS = sanitize( $item[ 'ds' ] );
        $series .= " DEF:'$unique_id'='$metric_file':'$DS':AVERAGE ";
+       if (isset($graph_config['scale'])) {
+         $cdef .= " CDEF:'s${unique_id}'=${unique_id},${graph_config['scale']},* ";
+       }
+       if (isset($graph_config['percent']) && $graph_config['percent'] == '1') {
+         $cdef .= " CDEF:'p${unique_id}'=${unique_id},total,/,100,* ";
+       }
 
        // By default graph is a line graph
        isset( $item['type']) ? 
@@ -89,41 +103,90 @@ function build_rrdtool_args_from_json( &$rrdtool_graph, $graph_config ) {
            isset($item['line_width']) && 
            in_array( $item['line_width'], $line_widths) ? 
              $line_width = $item['line_width'] : $line_width = "1";
-           $series .= "LINE" . 
+           $graphdef .= "LINE" . 
                       $line_width . 
                       ":'$unique_id'#{$item['color']}:'{$label}' ";
            break;
        
          case "stack":
+         case "percent":
            // First element in a stack has to be AREA
            if ( $stack_counter == 0 ) {
-             $series .= "AREA";
+             $graphdef .= "AREA";
              $stack_counter++;
            } else {
-             $series .= "STACK";
+             $graphdef .= "STACK";
            }
-           $series .= ":'$unique_id'#${item['color']}:'${label}' ";
+           if (isset($graph_config['percent']) && $graph_config['percent'] == '1') {
+             $graphdef .= ":'p${unique_id}'#${item['color']}:'${label}' ";
+           } else if (isset($graph_config['scale'])) {
+             $graphdef .= ":'s${unique_id}'#${item['color']}:'${label}' ";
+           } else {
+             $graphdef .= ":'$unique_id'#${item['color']}:'${label}' ";
+           }
            break;
+
+         case "area":
+               $graphdef .= "AREA";
+               $graphdef .= ":'$unique_id'#${item['color']}:'${label}' ";
+         break;
+
         } // end of switch ( $item_type )
      
-        if ( $conf['graphreport_stats'] )
-          $series .= legendEntry($unique_id, $conf['graphreport_stat_items']);
+        if ( $conf['graphreport_stats'] ) {
+          if (isset($graph_config['percent']) && $graph_config['percent'] == '1') {
+            $graphdef .= legendEntry('p' . $unique_id, $conf['graphreport_stat_items']);
+          } else if (isset($graph_config['scale'])) {
+            $graphdef .= legendEntry('s' . $unique_id, $conf['graphreport_stat_items']);
+          } else {
+            $graphdef .= legendEntry($unique_id, $conf['graphreport_stat_items']);
+          }
+        }
 
      } // end of if ( is_file($metric_file) ) {
      
   } // end of foreach( $graph_config[ 'series' ] as $index => $item )
 
+  // Percentage calculation for cdefs, if required
+  //if (isset($graph_config['percent']) && $graph_config['percent'] == '1') {
+    $total = " CDEF:'total'=";
+    if (count($total_ids) == 0) {
+      // Handle nothing gracefully, do nothing
+    } else if (count($total_ids) == 1) {
+      // Concat just that id, leave it at that (100%)
+      $total .= $total_ids[0];
+       if (isset($graph_config['scale'])) {
+         $total .= ",${graph_config['scale']},*";
+       }
+      $cdef = $total . ' ' . $cdef;
+    } else {
+      $total .= $total_ids[0];
+      for ($i=1; $i<count($total_ids); $i++) {
+        $total .= ',' . $total_ids[$i] . ',ADDNAN';
+      }
+       if (isset($graph_config['scale'])) {
+         $total .= ",${graph_config['scale']},*";
+       }
+      // Prepend total calculation
+      $cdef = $total . ', ' . $cdef;
+    }
+  //} // if graph_config['percent']
+
+  if ( isset($graph_config['show_total']) && $graph_config['show_total'] == 1 ) {
+    $cdef .= " LINE1:'total'#000000:'Total' " . legendEntry('total', $conf['graphreport_stat_items']);
+  }
+
   // If we end up with the empty series it means that no RRD files matched. 
   // This can happen if we are trying to create a report and metrics for 
   // this host were not collected. If that happens we should create an 
   // empty graph
-  if ( $series == "" ) 
+  if ( $series == "" ) {
     $rrdtool_graph[ 'series' ] = 
       'HRULE:1#FFCC33:"No matching metrics detected"';   
-  else
-    $rrdtool_graph[ 'series' ] = $series;
-  
-  
+  } else {
+    $rrdtool_graph[ 'series' ] = $series . ' ' . $cdef . ' ' . $graphdef;
+  }
+
   return $rrdtool_graph;
 }
 
@@ -177,25 +240,54 @@ $gweb_root = dirname(__FILE__);
 $size = isset($_GET["z"]) && 
         in_array($_GET[ 'z' ], $conf['graph_sizes_keys']) ? $_GET["z"] : NULL;
 
-# If graph arg is not specified default to metric
-$graph = isset($_GET["g"])  ?  sanitize ( $_GET["g"] )   : "metric";
+$metric_name = isset($_GET["m"]) ? sanitize ( $_GET["m"] ) : NULL;
+# In clusterview we may supply report as metric name so let's make sure it
+# doesn't treat it as a metric
+if ( preg_match("/_report$/", $metric_name) && !isset($_GET["g"]) ) {
+  $graph = $metric_name;
+} else {
+  # If graph arg is not specified default to metric
+  $graph = isset($_GET["g"])  ?  sanitize ( $_GET["g"] )   : "metric";
+}
 
-#$graph_arguments = NULL;
-#$pos = strpos($graph, ",");
-#if ($pos !== FALSE) {
-#  $graph_report = substr($graph, 0, $pos);
-#  $graph_arguments = substr($graph, $pos + 1);
-#  $graph = $graph_report;
-#}
+$graph_arguments = array();
+if ($conf['enable_pass_in_arguments_to_optional_graphs']) {
+  $pos = strpos($graph, ",");
+  if ($pos !== FALSE) {
+    $graph_report = substr($graph, 0, $pos);
+    $args = str_getcsv(substr($graph, $pos + 1), ",", "'");
+    /*
+      ob_start();
+      var_dump($args);
+      $result = ob_get_clean();
+      error_log("args = $result");
+    */
+    foreach ($args as $arg) {
+      if (is_numeric($arg)) {
+	if (ctype_digit($arg))
+	  $graph_arguments[] = intval($arg);
+	else
+	  $graph_arguments[] = floatval($arg);
+      } else
+	$graph_arguments[] = $arg;
+    }
+    $graph = $graph_report;
+  }
+}
 
 $grid = isset($_GET["G"]) ? sanitize( $_GET["G"]) : NULL;
 $self = isset($_GET["me"]) ? sanitize( $_GET["me"]) : NULL;
 $vlabel = isset($_GET["vl"]) ? sanitize($_GET["vl"])  : NULL;
+$graph_scale = isset($_GET["gs"]) ? sanitize($_GET["gs"])  : NULL;
+$scale = isset($_GET["scale"]) ? sanitize($_GET["scale"])  : NULL;
+$show_total  = isset($_GET["show_total"]) ? sanitize($_GET["show_total"])  : NULL;
 $value = isset($_GET["v"]) ? sanitize ($_GET["v"]) : NULL;
-$metric_name = isset($_GET["m"]) ? sanitize ( $_GET["m"] ) : NULL;
 # Max, min, critical and warning values
 $max = isset($_GET["x"]) && is_numeric($_GET["x"]) ? $_GET["x"] : NULL;
 $min = isset($_GET["n"]) && is_numeric($_GET["n"]) ? $_GET["n"] : NULL;
+$critical = isset($_GET["crit"]) && is_numeric($_GET["crit"]) ? $_GET["crit"] : NULL;
+$warning = isset($_GET["warn"]) && is_numeric($_GET["warn"]) ? $_GET["warn"] : NULL;
+
 $sourcetime = isset($_GET["st"]) ? clean_number(sanitize($_GET["st"])) : NULL;
 $load_color = isset($_GET["l"]) && 
               is_valid_hex_color(rawurldecode($_GET['l'])) ?
@@ -203,11 +295,19 @@ $load_color = isset($_GET["l"]) &&
 $summary = isset($_GET["su"]) ? 1 : 0;
 $debug = isset($_GET['debug']) ? clean_number(sanitize($_GET["debug"])) : 0;
 $showEvents = isset($_GET["event"]) ? sanitize ($_GET["event"]) : "show";
+$user['time_shift'] = isset($_GET["ts"]) ? clean_number(sanitize($_GET["ts"])) : 0;
 
 $command    = '';
 $graphite_url = '';
 
-$user['json_output'] = isset($_GET["json"]) ? 1 : NULL; 
+$user['json_output'] = isset($_GET["json"]) ? 1 : NULL;
+# Request for live dashboard
+if ( isset($_REQUEST['live']) ) {
+  $user['live_dashboard'] = 1;
+  $user['json_output'] = 1;
+} else {
+  $user['live_output'] = NULL;
+}
 $user['csv_output'] = isset($_GET["csv"]) ? 1 : NULL; 
 $user['graphlot_output'] = isset($_GET["graphlot"]) ? 1 : NULL; 
 $user['flot_output'] = isset($_GET["flot"]) ? 1 : NULL; 
@@ -246,6 +346,10 @@ $fudge_0 = $conf['graph_sizes'][$size]['fudge_0'];
 $fudge_1 = $conf['graph_sizes'][$size]['fudge_1'];
 $fudge_2 = $conf['graph_sizes'][$size]['fudge_2'];
 
+# Aliases for $user['cs'] and $user['ce'] (which are set in get_context.php).
+$cs = $user['cs'];
+$ce = $user['ce'];
+
 ///////////////////////////////////////////////////////////////////////////
 // Set some variables depending on the context. Context is set in
 // get_context.php
@@ -255,7 +359,7 @@ switch ($context)
   case "meta":
     $rrd_dir = $conf['rrds'] . "/__SummaryInfo__";
     $rrd_graphite_link = $conf['graphite_rrd_dir'] . "/__SummaryInfo__";
-    $title = "$self Grid";
+    $title = "$self ${conf['meta_designator']}";
     break;
   case "grid":
     $rrd_dir = $conf['rrds'] . "/$grid/__SummaryInfo__";
@@ -263,7 +367,7 @@ switch ($context)
     if (preg_match('/grid/i', $gridname))
         $title  = $gridname;
     else
-        $title  = "$gridname Grid";
+        $title  = "$gridname ${conf['meta_designator']}";
     break;
   case "cluster":
     $rrd_dir = $conf['rrds'] . "/$clustername/__SummaryInfo__";
@@ -318,9 +422,10 @@ $rrdtool_graph = array(
 if ($size == "small") {
     $conf['strip_domainname'] = true;
     # Let load coloring work for little reports in the host list.
-    if (! isset($subtitle) and $load_color)
-        $rrdtool_graph['color'] = "BACK#'$load_color'";
 }
+
+if (! isset($subtitle) and $load_color)
+    $rrdtool_graph['color'] = "BACK#'$load_color'";
 
 if ($debug) {
   error_log("Graph [$graph] in context [$context]");
@@ -376,7 +481,7 @@ if ( isset( $_GET["aggregate"] ) && $_GET['aggregate'] == 1 ) {
   $start = time() + $start;
 
   // If graph type is not specified default to line graph
-  if ( isset($_GET["gtype"]) && in_array($_GET["gtype"], array("stack","line") )  ) 
+  if ( isset($_GET["gtype"]) && in_array($_GET["gtype"], array("stack","line","percent") )  ) 
       $graph_type = $_GET["gtype"];
   else
       $graph_type = "line";
@@ -422,6 +527,8 @@ if ( isset( $_GET["aggregate"] ) && $_GET['aggregate'] == 1 ) {
 
       if ($graph_type == "line" || $graph_type == "area") {
         $series['line_width'] = $line_width;
+      } else if ($graph_type == "percent") {
+        $graph_config['percent'] = "1";
       } else {
         $series['stack'] = "1";
       }
@@ -444,6 +551,9 @@ if ( isset( $_GET["aggregate"] ) && $_GET['aggregate'] == 1 ) {
   // Set up 
   $graph_config["report_type"] = "standard";
   $graph_config["vertical_label"] = $vlabel;
+  $graph_config["graph_scale"] = $graph_scale;
+  $graph_config["scale"] = $scale;
+  $graph_config["show_total"] = $show_total;
 
   // Reset graph title 
   if ( isset($_GET['title']) && $_GET['title'] != "") {
@@ -466,48 +576,63 @@ switch ( $conf['graph_engine'] ) {
              isset($_GET['title']) && 
              $_GET['title'] !== '')
 	  $metrictitle = sanitize($_GET['title']);
-      $php_report_file = $conf['graphdir'] . "/" . $graph . ".php";
+	$php_report_file = $conf['graphdir'] . "/" . $graph . ".php";
       $json_report_file = $conf['graphdir'] . "/" . $graph . ".json";
       
-      # Check for path traversal issues by making sure real path is actually in graphdir
       
-      if( is_file( $php_report_file ) and dirname(realpath($php_report_file)) ==  $conf['graphdir'] ) {
-        include_once $php_report_file;
-        $graph_function = "graph_${graph}";
-        #if (isset($graph_arguments))
-        #  eval('$graph_function($rrdtool_graph,' . $graph_arguments . ');');
-        #else
-        $graph_function( $rrdtool_graph );  // Pass by reference call, $rrdtool_graph modified inplace
-      } else if ( is_file( $json_report_file ) and dirname(realpath($json_report_file)) ==  $conf['graphdir'] ) {
-        $graph_config = json_decode( file_get_contents( $json_report_file ), TRUE );
-
-        # We need to add hostname and clustername if it's not specified
-        foreach ( $graph_config['series'] as $index => $item ) {
-          if ( ! isset($graph_config['series'][$index]['hostname'])) {
-            $graph_config['series'][$index]['hostname'] = $raw_host;
-            if (isset($grid))
-               $graph_config['series'][$index]['clustername'] = $grid;
-            else
-               $graph_config['series'][$index]['clustername'] = $clustername;
+      if( is_file( $php_report_file ) ) {
+         
+          # Check for path traversal issues by making sure real path is actually in graphdir
+          if ( dirname(realpath($php_report_file)) !=  $conf['graphdir'] ) {
+            $rrdtool_graph[ 'series' ] = 'HRULE:1#FFCC33:"Check \$conf[graphdir] should not be relative path"';
+          } else {
+            include_once $php_report_file;
+            $graph_function = "graph_${graph}";
+            if ($conf['enable_pass_in_arguments_to_optional_graphs'] &&
+                count($graph_arguments)) {
+              $rrdtool_graph['arguments'] = $graph_arguments;
+              // Pass by reference call, $rrdtool_graph modified inplace
+              $graph_function($rrdtool_graph);
+              unset($rrdtool_graph['arguments']);
+            } else {
+              $graph_function($rrdtool_graph);
+            }
           }
+      } else if ( is_file( $json_report_file ) ) {
+        
+        if ( dirname(realpath($json_report_file)) !=  $conf['graphdir'] ) {
+          $rrdtool_graph[ 'series' ] = 'HRULE:1#FFCC33:"Check \$conf[graphdir] should not be relative path"';
+        } else {
+          $graph_config = json_decode( file_get_contents( $json_report_file ), TRUE );
+  
+          # We need to add hostname and clustername if it's not specified
+          foreach ( $graph_config['series'] as $index => $item ) {
+            if ( ! isset($graph_config['series'][$index]['hostname'])) {
+              $graph_config['series'][$index]['hostname'] = $raw_host;
+              if (isset($grid))
+                 $graph_config['series'][$index]['clustername'] = $grid;
+              else
+                 $graph_config['series'][$index]['clustername'] = $clustername;
+            }
+          }
+          build_rrdtool_args_from_json ( $rrdtool_graph, $graph_config );
         }
-        build_rrdtool_args_from_json ( $rrdtool_graph, $graph_config );
       }
     } else { 
-        build_rrdtool_args_from_json ( $rrdtool_graph, $graph_config );
+      build_rrdtool_args_from_json ( $rrdtool_graph, $graph_config );
     }
   
     // We must have a 'series' value, or this is all for naught
     if (!array_key_exists('series', $rrdtool_graph) || 
         !strlen($rrdtool_graph['series']) ) {
 	$rrdtool_graph[ 'series' ] = 
-	  'HRULE:1#FFCC33:"No matching metrics detected"';
+	  'HRULE:1#FFCC33:"Empty RRDtool command. Likely bad graph config"';
     }
   
     # Make small graphs (host list) cleaner by removing the too-big
     # legend: it is displayed above on larger cluster summary graphs.
     if (($size == "small" and ! isset($subtitle)) || ($graph_config["glegend"] == "hide"))
-        $rrdtool_graph['extras'] = "-g";
+        $rrdtool_graph['extras'] = isset($rrdtool_graph['extras']) ? $rrdtool_graph['extras'] . " -g" : " -g" ;
 
     # add slope-mode if rrdtool_slope_mode is set
     if (isset($conf['rrdtool_slope_mode']) && 
@@ -541,8 +666,23 @@ switch ( $conf['graph_engine'] ) {
     }
     if ( $min )
       $rrdtool_graph['lower-limit'] = $min;
-    if ( $max || $min )
+
+    if ( isset($graph_config['percent']) && $graph_config['percent'] == '1' ) {
+      $rrdtool_graph['upper-limit'] = 100;
+      $rrdtool_graph['lower-limit'] = 0;
+    }
+    if ( $max || $min || ( isset($graph_config['percent']) && $graph_config['percent'] == '1' ) )
         $rrdtool_graph['extras'] = isset($rrdtool_graph['extras']) ? $rrdtool_graph['extras'] . " --rigid" : " --rigid" ;
+    if ( isset($graph_config['graph_scale']) ) {
+      // Log scale support
+      if ( $graph_config['graph_scale'] == 'log' ) {
+        $rrdtool_graph['extras'] = isset($rrdtool_graph['extras']) ? $rrdtool_graph['extras'] . " --logarithm --units=si" : " --logarithm --units=si" ;
+        if (!isset($rrdtool_graph['lower-limit']) || $rrdtool_graph['lower-limit'] < 1) {
+          // With log scale, the lower limit *has* to be 1 or greater.
+          $rrdtool_graph['lower-limit'] = 1;
+        }
+      }
+    }
   
     // The order of the other arguments isn't important, except for the
     // 'extras' and 'series' values.  These two require special handling.
@@ -690,18 +830,42 @@ if ( $user['json_output'] ||
         $metric_type = "stack";
       }
       $metric_name = $out[6];
-      $output_array[] = array( "ds_name" => $ds_name, 
-                               "cluster_name" => $cluster_name,
-                               "graph_type" => $metric_type,
-                               "host_name" => $host_name, 
-                               "metric_name" => $metric_name );
+      $ds_attr = array( "ds_name" => $ds_name,
+			"cluster_name" => $cluster_name,
+			"graph_type" => $metric_type,
+			"host_name" => $host_name, 
+			"metric_name" => $metric_name );
+
+      // Add color if it exists
+      $pos_hash = strpos($out[4], '#');
+      if ($pos_hash !== FALSE) {
+	$pos_colon = strpos($out[4], ':');
+        if ($pos_colon !== FALSE)
+	  $ds_attr['color'] = substr($out[4], 
+				     $pos_hash, 
+				     $pos_colon - $pos_hash); 
+	else
+	  $ds_attr['color'] = substr($out[4], $pos_hash); 
+      }
+
+      $output_array[] = $ds_attr;
+
       $rrdtool_graph_args .=  " " . "XPORT:'" . $ds_name . "':'" . $metric_name . "' ";
     }
   }
 
-
   // This command will export values for the specified format in XML
-  $command = $conf['rrdtool'] . " xport --start " . $rrdtool_graph['start'] . " --end " .  $rrdtool_graph['end'] . " " . $rrdtool_graph_args;
+  $command = $conf['rrdtool'] . " xport --start '" . $rrdtool_graph['start'] . "' --end '" .  $rrdtool_graph['end'] . "' " 
+    // Allow a custom step, if it was specified by the user. Also, we need to
+    // specify a --maxrows in case the number of rows with $user['step'] end up 
+    // being higher than rrdxport's default (in which case the step is changed 
+    // to fit inside the default --maxrows), but we also need to guard against 
+    // "underflow" because rrdxport craps out when --maxrows is less than 10.
+    . ( $user['step'] ? 
+          " --step '" . $user['step'] . "' --maxrows '" 
+          . max( 10, round(($rrdtool_graph['end'] - $rrdtool_graph['start'])/$user['step']) ) . "' " : 
+          "" )
+    . $rrd_options . " " . $rrdtool_graph_args;
 
   // Read in the XML
   $fp = popen($command,"r"); 
@@ -740,6 +904,22 @@ if ( $user['json_output'] ||
   // If JSON output request simple encode the array as JSON
   if ( $user['json_output'] ) {
 
+    // First let's check if JSON output is requested for Live Dashboard and
+    // we are outputting aggregate graph. If so we need to add up all the values
+    if ( $user['live_dashboard'] && sizeof($output_array) > 1 ) {
+      $summed_output = array();
+      foreach ( $output_array[0]['datapoints'] as $index => $datapoint ) {
+        // Data point is an array with value and UNIX time stamp. Initialize
+        // summed output as 0
+        $summed_output[$index] = array( 0, $datapoint[1] );
+        for ( $i = 0 ; $i < sizeof($output_array) ; $i++ ) {
+          $summed_output[$index][0] += $output_array[$i]['datapoints'][$index][0];
+        }
+      }
+      
+      unset($output_array);
+      $output_array[0]['datapoints'] = $summed_output;
+    }
     header("Content-type: application/json");
     header("Content-Disposition: inline; filename=\"ganglia-metrics.json\"");
     print json_encode($output_array);
@@ -757,8 +937,15 @@ if ( $user['json_output'] ||
                                                  " " . 
                                                  $metric_array['metric_name'], 
                      'data' => $data_array);
+
+      if (array_key_exists('color', $metric_array))
+	$gdata['color'] = $metric_array['color'];
+
       if ($metric_array['graph_type'] == "stack")
         $gdata['stack'] = '1';
+
+      $gdata['graph_title'] = $rrdtool_graph['title'];
+
       $flot_array[] = $gdata;
 
       unset($data_array);
@@ -1075,13 +1262,44 @@ if ( $showEvents == "show" &&
   } //End check for array
 }
 
+////////////////////////////////////////////////////////////////////////////////
 // Add a trend line
+////////////////////////////////////////////////////////////////////////////////
 if ( $user['trend_line'] ) {
   
     $command .= " VDEF:D2=sum,LSLSLOPE VDEF:H2=sum,LSLINT CDEF:avg2=sum,POP,D2,COUNT,*,H2,+";
     $command .= " 'LINE3:avg2#53E2FF:Trend:dashes'";
 
-  
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Timeshift is only available to metric graphs
+////////////////////////////////////////////////////////////////////////////////
+if ( $user['time_shift'] && $graph == "metric" ) {
+
+    preg_match_all("/(DEF|CDEF):((([^ \"'])+)|(\"[^\"]*\")|('[^']*'))+/", 
+                 " " . $rrdtool_graph['series'], 
+                 $matches);
+
+    // Only do this for metric graphs
+    $start = intval(abs(str_replace("s", "", $rrdtool_graph['start'])));
+    $offset = 2 * $start;
+
+    $def = str_replace("DEF:'sum'", "DEF:'sum2'", trim($matches[0][0])) . ":start=end-" . $offset;
+    
+    $command .= " " . $def . " SHIFT:sum2:" . $start;
+    $command .= " 'LINE2:sum2#FFE466:Previous " . $range . ":dashes'";
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Add warning and critical lines
+////////////////////////////////////////////////////////////////////////////////
+if ( $warning ) {
+  $command .= " 'HRULE:" . $warning . "#FFF600:Warning:dashes'";  
+}
+
+if ( $critical ) {
+  $command .= " 'HRULE:" . $critical . "#FF0000:Critical:dashes'";
 }
 
 if ($debug) {
