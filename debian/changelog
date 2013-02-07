@@ -1,3 +1,9 @@
+ganglia (3.5.0-1+gweb3.5.4) UNRELEASED; urgency=low
+
+  * Update monitor core sources to upstream's 3.5.0.
+
+ -- Riccardo Murri <riccardo.murri@gmail.com>  Thu, 07 Feb 2013 17:49:00 +0100
+
 ganglia (3.3.8debian-1+gweb3.5.4) UNRELEASED; urgency=low
 
   * Update web frontend sources to upstream's 3.5.4.
