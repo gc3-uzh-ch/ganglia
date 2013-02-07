@@ -1,12 +1,12 @@
 # Location where gweb should be installed to
-GDESTDIR = /var/www/html/ganglia
+GDESTDIR = /usr/share/ganglia-webfrontend
 
 APACHE_USER = apache
 
 # Gweb version
 GWEB_MAJOR_VERSION = 3
 GWEB_MINOR_VERSION = 5
-GWEB_MICRO_VERSION = 3
+GWEB_MICRO_VERSION = 4
 
 # Gweb statedir (where RRD files, Dwoo templates are stored)
 GWEB_STATEDIR = /var/lib

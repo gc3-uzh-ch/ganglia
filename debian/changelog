@@ -1,3 +1,9 @@
+ganglia (3.3.8debian-1+gweb3.5.4) UNRELEASED; urgency=low
+
+  * Update web frontend sources to upstream's 3.5.4.
+
+ -- Riccardo Murri <riccardo.murri@gmail.com>  Thu, 07 Feb 2013 17:17:00 +0100
+
 ganglia (3.3.8-2) UNRELEASED; urgency=low
 
   * Add a debian/watch file.

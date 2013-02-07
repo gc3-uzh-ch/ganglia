@@ -4,7 +4,7 @@
 PACKAGE = ganglia
 
 # Uncomment this to turn on verbose mode.
-#export DH_VERBOSE=1
+export DH_VERBOSE=1
 
 # These are used for cross-compiling and for saving the configure script
 # from having to guess our platform (since we know it already)
@@ -93,7 +93,7 @@ install: build
 		debian/ganglia-monitor-python/usr/lib/ganglia/python_modules/
 
 #Install webfrontend
-	$(MAKE) -C web install APACHE_USER=www-data DESTDIR=$(CURDIR)/debian/ganglia-webfrontend/usr/share/ganglia-webfrontend  GWEB_STATEDIR=$(CURDIR)/debian/ganglia-webfrontend/var/lib
+	$(MAKE) -C web install APACHE_USER=www-data DESTDIR=$(CURDIR)/debian/ganglia-webfrontend
 	mkdir -p debian/ganglia-webfrontend/etc/apache2/conf.d/
 	cp -f web/debian/apache.conf \
 		 debian/ganglia-webfrontend/etc/ganglia-webfrontend
